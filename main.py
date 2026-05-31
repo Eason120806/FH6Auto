@@ -378,7 +378,7 @@ class FH_UltimateBot(ctk.CTk):
         
         self.log("免责声明：本脚本仅供 Python 自动化技术交流与学习使用。请勿用于商业盈利或破坏游戏平衡，因使用本脚本造成的账号封禁等损失，由使用者自行承担。")
         self.log("工具运行目录不要有中文")
-        self.log("默认刷图车辆：【斯巴鲁Impreza 22B-STi Version】【调校S2  900】【保持默认涂装】【收藏车辆】")
+        self.log("默认刷图车辆：【斯巴鲁Impreza 22B-STi Version】【调校S2  805】【保持默认涂装】【收藏车辆】")
         self.log("启动前先将键盘设置为【英文键盘】")
         self.log("游戏设置为【自动转向】【自动挡】，游戏语言设置为【简体中文】")
         self.log("大部分以图像识别作为引导，减少机器盲目操作的风险，但仍无法完全避免，使用前请做好准备")
@@ -3474,10 +3474,8 @@ class FH_UltimateBot(ctk.CTk):
         for _ in range(5):
             if not self.is_running:
                 return False
-                
-
             brand_pos = self.wait_for_any_image_gray(
-                ["CCbrand.png"],
+                ["CCbrand.png", "CCbrand-b.png"],
                 region=self.regions["全界面"],
                 threshold=0.75,
                 timeout=0.8,
@@ -3486,7 +3484,6 @@ class FH_UltimateBot(ctk.CTk):
             )
             if brand_pos:
                 break
-
             self.hw_press("up")
             time.sleep(0.25)
 
@@ -4012,17 +4009,16 @@ class FH_UltimateBot(ctk.CTk):
         time.sleep(1.0)
 
 
-        #切换到消耗品品牌
+        # 切换到消耗品品牌
         self.log("切换到消耗品品牌...")
         self.hw_press("backspace")
         brand_pos = None
         for _ in range(5):
             if not self.is_running:
                 return False
-                
-
+            # 使用双图片匹配：未选中 + 选中状态
             brand_pos = self.wait_for_any_image_gray(
-                ["CCbrand.png"],
+                ["CCbrand.png", "CCbrand-b.png"],
                 region=self.regions["全界面"],
                 threshold=0.75,
                 timeout=0.8,
@@ -4031,7 +4027,6 @@ class FH_UltimateBot(ctk.CTk):
             )
             if brand_pos:
                 break
-
             self.hw_press("up")
             time.sleep(0.25)
 
