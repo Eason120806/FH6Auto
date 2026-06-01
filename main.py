@@ -1928,39 +1928,7 @@ class FH_UltimateBot(ctk.CTk):
             self.scaled_template_cache.clear()
             self.load_template_file_cache()
 
-    def get_scaled_template(self, template_path, scale, mode='color'):
-        actual_path = get_img_path(template_path)
-        images_dir = self.get_images_root_dir()
-        if images_dir and os.path.exists(actual_path):
-            try:
-                rel_key = os.path.relpath(actual_path, images_dir).replace("\\", "/")
-            except Exception:
-                rel_key = os.path.basename(actual_path)
-        else:
-            rel_key = os.path.basename(actual_path)
-        mem_key = (actual_path, round(scale, 3), mode)
-        if mem_key in self.scaled_template_cache:
-            return self.scaled_template_cache[mem_key]
-        scale_key = str(round(scale, 3))
-        if mode == 'color' and rel_key in self.file_template_cache:
-            tpl = self.file_template_cache[rel_key].get(scale_key)
-            if tpl is not None:
-                self.scaled_template_cache[mem_key] = tpl
-                return tpl
-        if mode == 'color':
-            tpl_orig, _ = self.load_template(template_path)
-        elif mode == 'gray':
-            tpl_orig = self.load_template_gray(template_path)
-        else:
-            tpl_orig = self.load_template_transparent(template_path)
-        if tpl_orig is None:
-            return None
-        if scale == 1.0:
-            tpl = tpl_orig
-        else:
-            tpl = cv2.resize(tpl_orig, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
-        self.scaled_template_cache[mem_key] = tpl
-        return tpl
+    # 注意：get_scaled_template 已在上方定义，此处不再重复
 
     # ==========================================
     # --- 模块：跑图 ---
@@ -2017,9 +1985,10 @@ class FH_UltimateBot(ctk.CTk):
         time.sleep(2.0)
         self.hw_press("enter")
         time.sleep(2.0)
+        # 修改: 提高 liketag 匹配阈值，防止误识别
         pos_target = self.wait_for_image_with_element_multi("skillcar.png", "liketag.png", region=self.regions["全界面"],
-                                                            fast_mode=True, main_threshold=0.75, like_threshold=0.7,
-                                                            final_threshold=0.7, timeout=2, interval=0.25)
+                                                            fast_mode=True, main_threshold=0.75, like_threshold=0.85,
+                                                            final_threshold=0.85, timeout=2, interval=0.25)
         if not pos_target:
             self.log("未找到带 liketag 的目标车辆，重新选品牌...")
             self.hw_press("backspace")
@@ -2043,7 +2012,7 @@ class FH_UltimateBot(ctk.CTk):
                 if not self.is_running:
                     return False
                 pos_target = self.wait_for_image_with_element_multi("skillcar.png", "liketag.png", region=self.regions["全界面"],
-                                                                    main_threshold=0.75, like_threshold=0.7, final_threshold=0.7,
+                                                                    main_threshold=0.75, like_threshold=0.85, final_threshold=0.85,
                                                                     timeout=2, interval=0.25, fast_mode=True)
                 if pos_target:
                     break
@@ -2087,7 +2056,6 @@ class FH_UltimateBot(ctk.CTk):
             timeout_triggered = False
             driving_keys_held = True
             while self.is_running:
-                # 暂停检查
                 if self.is_paused:
                     if driving_keys_held:
                         self.hw_key_up("w")
@@ -2308,8 +2276,9 @@ class FH_UltimateBot(ctk.CTk):
             for _ in range(85 - jump_pages):
                 if not self.is_running:
                     return False
+                # 修改: 提高 newcartag 匹配阈值，防止误识别
                 pos_target = self.wait_for_image_with_element_multi("newCC.png", "newcartag.png", region=self.regions["全界面"],
-                                                                    main_threshold=0.75, like_threshold=0.75, final_threshold=0.70,
+                                                                    main_threshold=0.75, like_threshold=0.85, final_threshold=0.85,
                                                                     timeout=1.5, interval=0.2, fast_mode=True)
                 if pos_target:
                     self.game_click(pos_target)
