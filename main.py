@@ -1927,9 +1927,7 @@ class FH_UltimateBot(ctk.CTk):
             self.template_cache.clear()
             self.scaled_template_cache.clear()
             self.load_template_file_cache()
-
-    # 注意：get_scaled_template 已在上方定义，此处不再重复
-
+            
     # ==========================================
     # --- 模块：跑图 ---
     # ==========================================
@@ -1985,10 +1983,9 @@ class FH_UltimateBot(ctk.CTk):
         time.sleep(2.0)
         self.hw_press("enter")
         time.sleep(2.0)
-        # 修改: 提高 liketag 匹配阈值，防止误识别
         pos_target = self.wait_for_image_with_element_multi("skillcar.png", "liketag.png", region=self.regions["全界面"],
-                                                            fast_mode=True, main_threshold=0.75, like_threshold=0.85,
-                                                            final_threshold=0.85, timeout=2, interval=0.25)
+                                                            fast_mode=True, main_threshold=0.75, like_threshold=0.7,
+                                                            final_threshold=0.7, timeout=2, interval=0.25)
         if not pos_target:
             self.log("未找到带 liketag 的目标车辆，重新选品牌...")
             self.hw_press("backspace")
@@ -2012,7 +2009,7 @@ class FH_UltimateBot(ctk.CTk):
                 if not self.is_running:
                     return False
                 pos_target = self.wait_for_image_with_element_multi("skillcar.png", "liketag.png", region=self.regions["全界面"],
-                                                                    main_threshold=0.75, like_threshold=0.85, final_threshold=0.85,
+                                                                    main_threshold=0.75, like_threshold=0.7, final_threshold=0.7,
                                                                     timeout=2, interval=0.25, fast_mode=True)
                 if pos_target:
                     break
@@ -2276,9 +2273,8 @@ class FH_UltimateBot(ctk.CTk):
             for _ in range(85 - jump_pages):
                 if not self.is_running:
                     return False
-                # 修改: 提高 newcartag 匹配阈值，防止误识别
                 pos_target = self.wait_for_image_with_element_multi("newCC.png", "newcartag.png", region=self.regions["全界面"],
-                                                                    main_threshold=0.75, like_threshold=0.85, final_threshold=0.85,
+                                                                    main_threshold=0.75, like_threshold=0.75, final_threshold=0.70,
                                                                     timeout=1.5, interval=0.2, fast_mode=True)
                 if pos_target:
                     self.game_click(pos_target)
