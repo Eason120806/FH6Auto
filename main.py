@@ -74,7 +74,7 @@ LOG_FILE = os.path.join(APP_DIR, "bot_log.txt")
 CACHE_DIR = os.path.join(APP_DIR, "cache")
 TEMPLATE_CACHE_FILE = os.path.join(CACHE_DIR, "template_cache.pkl")
 TEMPLATE_META_FILE = os.path.join(CACHE_DIR, "template_meta.json")
-CURRENT_VERSION = "1.1.6"
+CURRENT_VERSION = "1.1.6"   # 版本号保持原样，未升级
 
 def auto_extract_configs():
     os.makedirs(CONFIG_DIR, exist_ok=True)
@@ -1093,9 +1093,9 @@ class FH_UltimateBot(ctk.CTk):
         def test_runner():
             success = self.restart_game_and_boot(force_test=True)
             if success:
-                self.log("✅ 测试结束：自动开机、A/B/C状态机识别并到达菜单完美跑通！")
+                self.log("测试结束：自动开机、A/B/C状态机识别并到达菜单完美跑通！")
             else:
-                self.log("❌ 测试结束：自动开机流程失败，请检查截图或日志。")
+                self.log("测试结束：自动开机流程失败，请检查截图或日志。")
             self.stop_all()
         self.current_thread = threading.Thread(target=test_runner, daemon=True)
         self.current_thread.start()
@@ -1128,6 +1128,7 @@ class FH_UltimateBot(ctk.CTk):
                     self.stop_all()
                 elif k == keyboard.Key.f9:
                     self.toggle_pause()
+                # 已删除 F3 热键及其对应功能
             with keyboard.Listener(on_press=on_press) as listener:
                 listener.join()
         threading.Thread(target=hotkey_thread, daemon=True).start()
@@ -1326,6 +1327,43 @@ class FH_UltimateBot(ctk.CTk):
         self.log("自动启动超时(5分钟)，放弃抢救。")
         return False
 
+    def handle_vramne_restart(self):
+        self.log("!!! 检测到 VRAMNE.png，2秒后强杀游戏，等待10分钟再重启...")
+        time.sleep(2.0)
+        if not self.is_running:
+            return False
+        try:
+            os.system('taskkill /F /IM forzahorizon6.exe /T')
+            self.log("已强杀 forzahorizon6.exe")
+        except Exception as e:
+            self.log(f"强杀游戏失败: {e}")
+            return False
+
+        self.log("开始等待 10 分钟释放显存...")
+        for _ in range(600):
+            if hasattr(self, "check_pause"):
+                self.check_pause()
+            if not self.is_running:
+                return False
+            time.sleep(1)
+        self.log("10分钟等待结束，准备自动重启游戏...")
+        return self.restart_game_and_boot()
+
+    def check_vramne_during_race(self):
+        try:
+            pos_vram = self.find_image_gray(
+                "VRAMNE.png",
+                region=self.regions["全界面"],
+                threshold=0.70,
+                fast_mode=True
+            )
+            if pos_vram:
+                return self.handle_vramne_restart()
+            return None
+        except Exception as e:
+            self.log(f"检测到显存不足: {e}")
+            return None
+
     def attempt_recovery(self):
         self.log("任务执行异常中断，准备执行断点恢复流程...")
         if not self.check_and_focus_game():
@@ -1342,7 +1380,7 @@ class FH_UltimateBot(ctk.CTk):
         return self.find_image_gray("collectionjournal.png", region=self.regions["左"], threshold=0.70, fast_mode=True)
 
     def enter_menu(self):
-        self.log("正在尝试进入主菜单 (按ESC验证)...")
+        self.log("正在尝试进入主菜单...")
         for i in range(60):
             if not self.is_running:
                 return False
@@ -1350,10 +1388,10 @@ class FH_UltimateBot(ctk.CTk):
                 self.log(f"成功定位到菜单锚点！({i + 1}/60)")
                 time.sleep(0.5)
                 return True
-            self.log(f"未在主菜单，按下 ESC... ({i + 1}/60)")
+            self.log(f"未在主菜单... ({i + 1}/60)")
             self.hw_press("esc")
             time.sleep(1.0)
-        self.log("60 次 ESC 尝试均未进入菜单，请检查游戏状态。")
+        self.log("60 次尝试均未进入菜单，请检查游戏状态。")
         return False
 
     def advanced_enter_menu(self):
@@ -1377,16 +1415,22 @@ class FH_UltimateBot(ctk.CTk):
                 return True
             if self.find_image_gray("VRAMNE.png", region=self.regions["全界面"], threshold=0.75, fast_mode=True):
                 self.log("!!! 严重警告: 检测到显存不足 (VRAMNE.png) 报错！")
-                self.log("为保护硬件并恢复显存，强制机器冷却 10 分钟 (600秒)...")
+                self.log("2秒后强杀游戏，随后冷却 10 分钟...")
+                time.sleep(2.0)
+                try:
+                    os.system('taskkill /F /IM forzahorizon6.exe /T')
+                    self.log("已强杀 forzahorizon6.exe")
+                except Exception as e:
+                    self.log(f"强杀游戏失败: {e}")
+                    return False
                 for _ in range(600):
                     if hasattr(self, "check_pause"):
                         self.check_pause()
                     if not self.is_running:
                         return False
                     time.sleep(1)
-                self.log("10 分钟冷却完毕！准备继续尝试退回...")
-                # 不再杀进程，直接继续尝试
-                continue
+                self.log("10 分钟冷却完毕，交给外层执行重启流程。")
+                return False
             pos_obs = self.find_any_image_gray(dynamic_obstacles, region=self.regions["全界面"], threshold=0.75, fast_mode=True)
             if pos_obs:
                 self.log(f"退回途中检测到已知图片/弹窗，点击推进... ({i+1}/80)")
@@ -1402,24 +1446,38 @@ class FH_UltimateBot(ctk.CTk):
     # ==========================================
     # --- 优化后的图像查找核心 ---
     # ==========================================
-    def capture_region(self, region=None):
+    def capture_region(self, region=None, mask_areas=None):
         now = time.time()
         if region == self._last_screenshot_region and self._last_screenshot is not None and (now - self._last_screenshot_time) < 0.05:
-            return self._last_screenshot
-        try:
-            if region:
-                x, y, w, h = region
-                bbox = (int(x), int(y), int(x + w), int(y + h))
-                screen = ImageGrab.grab(bbox=bbox, all_screens=True)
-            else:
-                screen = ImageGrab.grab(all_screens=True)
-        except Exception:
-            screen = pyautogui.screenshot(region=region)
-        img = cv2.cvtColor(np.array(screen), cv2.COLOR_RGB2BGR)
-        self._last_screenshot = img
-        self._last_screenshot_time = now
-        self._last_screenshot_region = region
-        return img
+            screen_bgr = self._last_screenshot
+        else:
+            try:
+                if region:
+                    x, y, w, h = region
+                    bbox = (int(x), int(y), int(x + w), int(y + h))
+                    screen = ImageGrab.grab(bbox=bbox, all_screens=True)
+                else:
+                    screen = ImageGrab.grab(all_screens=True)
+            except Exception:
+                screen = pyautogui.screenshot(region=region)
+            screen_bgr = cv2.cvtColor(np.array(screen), cv2.COLOR_RGB2BGR)
+            self._last_screenshot = screen_bgr
+            self._last_screenshot_time = now
+            self._last_screenshot_region = region
+
+        if mask_areas:
+            for rect in mask_areas:
+                try:
+                    mx1, my1, mx2, my2 = rect
+                    mx1 = max(0, int(mx1))
+                    my1 = max(0, int(my1))
+                    mx2 = min(screen_bgr.shape[1], int(mx2))
+                    my2 = min(screen_bgr.shape[0], int(my2))
+                    if mx2 > mx1 and my2 > my1:
+                        screen_bgr[my1:my2, mx1:mx2] = 0
+                except Exception:
+                    pass
+        return screen_bgr
 
     def get_scales_to_try(self, fast_mode=True):
         full_region = self.regions.get("全界面")
@@ -1526,45 +1584,71 @@ class FH_UltimateBot(ctk.CTk):
                     return (cx, cy)
         return None
 
-    def find_image_gray(self, template_path, region=None, threshold=0.75, fast_mode=True):
+    def find_image_gray(self, template_path, region=None, threshold=0.75, fast_mode=True, invert_mode=False):
         if not self.is_running:
             return None
         screen = self.capture_region(region)
         screen_gray = cv2.cvtColor(screen, cv2.COLOR_BGR2GRAY)
+        tpl_gray_raw = self.load_template_gray(template_path)
+        if tpl_gray_raw is None:
+            return None
         for scale in self.get_scales_to_try(fast_mode):
-            tpl = self.get_scaled_template(template_path, scale, 'gray')
-            if tpl is None:
+            tpl_gray = tpl_gray_raw
+            if scale != 1.0:
+                tpl_gray = cv2.resize(tpl_gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+            h, w = tpl_gray.shape[:2]
+            if h < 5 or w < 5 or h > screen_gray.shape[0] or w > screen_gray.shape[1]:
                 continue
-            h, w = tpl.shape[:2]
-            if h > screen_gray.shape[0] or w > screen_gray.shape[1]:
-                continue
-            max_val, max_loc = self._match_template(screen_gray, tpl)
+            # 原图匹配
+            res = cv2.matchTemplate(screen_gray, tpl_gray, cv2.TM_CCOEFF_NORMED)
+            _, max_val, _, max_loc = cv2.minMaxLoc(res)
             if max_val >= threshold:
-                cx = max_loc[0] + w//2 + (region[0] if region else 0)
-                cy = max_loc[1] + h//2 + (region[1] if region else 0)
-                self.log(f"[GrayMatch] 命中: {template_path} | 灰度得分: {max_val:.3f} (阈值 {threshold}) | 缩放比: {scale:.3f}")
-                return (cx, cy)
+                self.log(f"[GrayMatch] 命中: {template_path} | 模式: 原图 | 灰度得分: {max_val:.3f} (阈值 {threshold}) | 缩放比: {scale:.3f}")
+                return (max_loc[0] + w//2 + (region[0] if region else 0),
+                        max_loc[1] + h//2 + (region[1] if region else 0))
+            # 反相匹配
+            if invert_mode:
+                tpl_inv = 255 - tpl_gray
+                res_inv = cv2.matchTemplate(screen_gray, tpl_inv, cv2.TM_CCOEFF_NORMED)
+                _, max_val_inv, _, max_loc_inv = cv2.minMaxLoc(res_inv)
+                if max_val_inv >= threshold:
+                    self.log(f"[GrayMatch] 命中: {template_path} | 模式: 反相 | 灰度得分: {max_val_inv:.3f} (阈值 {threshold}) | 缩放比: {scale:.3f}")
+                    return (max_loc_inv[0] + w//2 + (region[0] if region else 0),
+                            max_loc_inv[1] + h//2 + (region[1] if region else 0))
         return None
 
-    def find_any_image_gray(self, image_list, region=None, threshold=0.75, fast_mode=True):
+    def find_any_image_gray(self, image_list, region=None, threshold=0.75, fast_mode=True, invert_mode=False):
         if not self.is_running:
             return None
         screen = self.capture_region(region)
         screen_gray = cv2.cvtColor(screen, cv2.COLOR_BGR2GRAY)
         for tpl_path in image_list:
+            tpl_gray_raw = self.load_template_gray(tpl_path)
+            if tpl_gray_raw is None:
+                continue
             for scale in self.get_scales_to_try(fast_mode):
-                tpl = self.get_scaled_template(tpl_path, scale, 'gray')
-                if tpl is None:
+                tpl_gray = tpl_gray_raw
+                if scale != 1.0:
+                    tpl_gray = cv2.resize(tpl_gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+                h, w = tpl_gray.shape[:2]
+                if h < 5 or w < 5 or h > screen_gray.shape[0] or w > screen_gray.shape[1]:
                     continue
-                h, w = tpl.shape[:2]
-                if h > screen_gray.shape[0] or w > screen_gray.shape[1]:
-                    continue
-                max_val, max_loc = self._match_template(screen_gray, tpl)
+                # 原图
+                res = cv2.matchTemplate(screen_gray, tpl_gray, cv2.TM_CCOEFF_NORMED)
+                _, max_val, _, max_loc = cv2.minMaxLoc(res)
                 if max_val >= threshold:
-                    cx = max_loc[0] + w//2 + (region[0] if region else 0)
-                    cy = max_loc[1] + h//2 + (region[1] if region else 0)
-                    self.log(f"[GrayMatchAny] 命中: {tpl_path} | 灰度得分: {max_val:.3f} (阈值 {threshold}) | 缩放比: {scale:.3f}")
-                    return (cx, cy)
+                    self.log(f"[GrayMatchAny] 命中: {tpl_path} | 模式: 原图 | 灰度得分: {max_val:.3f} (阈值 {threshold}) | 缩放比: {scale:.3f}")
+                    return (max_loc[0] + w//2 + (region[0] if region else 0),
+                            max_loc[1] + h//2 + (region[1] if region else 0))
+                # 反相
+                if invert_mode:
+                    tpl_inv = 255 - tpl_gray
+                    res_inv = cv2.matchTemplate(screen_gray, tpl_inv, cv2.TM_CCOEFF_NORMED)
+                    _, max_val_inv, _, max_loc_inv = cv2.minMaxLoc(res_inv)
+                    if max_val_inv >= threshold:
+                        self.log(f"[GrayMatchAny] 命中: {tpl_path} | 模式: 反相 | 灰度得分: {max_val_inv:.3f} (阈值 {threshold}) | 缩放比: {scale:.3f}")
+                        return (max_loc_inv[0] + w//2 + (region[0] if region else 0),
+                                max_loc_inv[1] + h//2 + (region[1] if region else 0))
         return None
 
     def find_image_transparent(self, template_path, region=None, threshold=0.70, fast_mode=True):
@@ -1599,12 +1683,12 @@ class FH_UltimateBot(ctk.CTk):
         return None
 
     def find_image_with_element_multi(self, main_path, sub_path, region=None, fast_mode=True,
-                                      main_threshold=0.60, like_threshold=0.75, final_threshold=0.72):
+                                      main_threshold=0.60, like_threshold=0.75, final_threshold=0.72, mask_areas=None):
         if not self.is_running:
             return None
-        screen = self.capture_region(region)
-        screen_gray = self.to_gray_image(screen)
-        screen_edge = self.to_edge_image(screen)
+        screen_bgr = self.capture_region(region, mask_areas=mask_areas)
+        screen_gray = self.to_gray_image(screen_bgr)
+        screen_edge = self.to_edge_image(screen_bgr)
         for scale in self.get_scales_to_try(fast_mode):
             main_tpl = self.get_scaled_template(main_path, scale, 'color')
             sub_tpl = self.get_scaled_template(sub_path, scale, 'color')
@@ -1613,19 +1697,28 @@ class FH_UltimateBot(ctk.CTk):
             main_tpl_gray = self.to_gray_image(main_tpl)
             main_tpl_edge = self.to_edge_image(main_tpl)
             h_m, w_m = main_tpl.shape[:2]
-            if h_m < 5 or w_m < 5 or h_m > screen.shape[0] or w_m > screen.shape[1]:
+            if h_m < 5 or w_m < 5 or h_m > screen_bgr.shape[0] or w_m > screen_bgr.shape[1]:
                 continue
-            res_main = cv2.matchTemplate(screen, main_tpl, cv2.TM_CCOEFF_NORMED)
-            loc = np.where(res_main >= main_threshold)
-            points = list(zip(*loc[::-1]))
-            points.sort(key=lambda p: (p[0] // 50, p[1]))
-            checked = set()
-            for x, y in points:
+            res_main = cv2.matchTemplate(screen_bgr, main_tpl, cv2.TM_CCOEFF_NORMED)
+            flat = res_main.ravel()
+            if flat.size == 0:
+                continue
+            top_k = min(80, flat.size)
+            idxs = np.argpartition(flat, -top_k)[-top_k:]
+            points = []
+            for idx in idxs:
+                y, x = np.unravel_index(idx, res_main.shape)
+                score = res_main[y, x]
+                if score >= max(0.55, main_threshold - 0.12):
+                    points.append((x, y, score))
+            points.sort(key=lambda p: (p[1], p[0]))
+            checked_points = set()
+            for x, y, base_score in points:
                 key = (x // 10, y // 10)
-                if key in checked:
+                if key in checked_points:
                     continue
-                checked.add(key)
-                roi_bgr = screen[y:y+h_m, x:x+w_m]
+                checked_points.add(key)
+                roi_bgr = screen_bgr[y:y+h_m, x:x+w_m]
                 roi_gray = screen_gray[y:y+h_m, x:x+w_m]
                 roi_edge = screen_edge[y:y+h_m, x:x+w_m]
                 if roi_bgr.shape[:2] != main_tpl.shape[:2]:
@@ -1637,8 +1730,8 @@ class FH_UltimateBot(ctk.CTk):
                 tpl_center = self.crop_center_ratio(main_tpl, 0.6)
                 center_score = self.match_template_score(roi_center, tpl_center)
                 pad = 5
-                sub_roi = screen[max(0, y-pad):min(screen.shape[0], y+h_m+pad),
-                                  max(0, x-pad):min(screen.shape[1], x+w_m+pad)]
+                sub_roi = screen_bgr[max(0, y-pad):min(screen_bgr.shape[0], y+h_m+pad),
+                                      max(0, x-pad):min(screen_bgr.shape[1], x+w_m+pad)]
                 like_score = self.match_template_score(sub_roi, sub_tpl)
                 if like_score < like_threshold:
                     continue
@@ -1651,61 +1744,71 @@ class FH_UltimateBot(ctk.CTk):
                     return (cx, cy)
         return None
 
-    def find_image_ultimate_safe(self, main_path, anti_path, region=None, main_threshold=0.80, anti_threshold=0.65):
+    def find_image_ultimate_safe(self, main_path, anti_path, region=None, main_threshold=0.80, anti_threshold=0.65, mask_areas=None):
         if not self.is_running:
             return None
-        screen = self.capture_region(region)
-        screen_gray = cv2.cvtColor(screen, cv2.COLOR_BGR2GRAY)
-        for scale in self.get_scales_to_try(fast_mode=True):
-            main_tpl_bgr = self.get_scaled_template(main_path, scale, 'color')
-            anti_tpl_bgr = self.get_scaled_template(anti_path, scale, 'color')
-            if main_tpl_bgr is None or anti_tpl_bgr is None:
+        screen_bgr = self.capture_region(region, mask_areas=mask_areas)
+        screen_gray = cv2.cvtColor(screen_bgr, cv2.COLOR_BGR2GRAY)
+        scales_to_try = self.get_scales_to_try(fast_mode=True)
+        for scale in scales_to_try:
+            main_tpl_bgr = self.get_scaled_template(main_path, scale)
+            if main_tpl_bgr is None:
                 continue
-            main_tpl_gray = self.to_gray_image(main_tpl_bgr)
+            anti_tpl_bgr = None
+            if anti_path:
+                anti_tpl_bgr = self.get_scaled_template(anti_path, scale)
+                if anti_tpl_bgr is None:
+                    continue
+            main_tpl_gray = cv2.cvtColor(main_tpl_bgr, cv2.COLOR_BGR2GRAY)
             h_m, w_m = main_tpl_bgr.shape[:2]
-            h_a, w_a = anti_tpl_bgr.shape[:2]
-            if h_m < 10 or w_m < 10 or h_m > screen.shape[0] or w_m > screen.shape[1]:
+            if h_m < 5 or w_m < 5 or h_m > screen_bgr.shape[0] or w_m > screen_bgr.shape[1]:
                 continue
-            res_main = cv2.matchTemplate(screen, main_tpl_bgr, cv2.TM_CCOEFF_NORMED)
+            res_main = cv2.matchTemplate(screen_bgr, main_tpl_bgr, cv2.TM_CCOEFF_NORMED)
             loc = np.where(res_main >= main_threshold)
             points = list(zip(*loc[::-1]))
-            points.sort(key=lambda p: (p[0] // 50, p[1]))
+            points.sort(key=lambda p: (p[1] // 50, p[0]))
             checked = set()
-            for x, y in points:
+            for pt in points:
+                x, y = pt
                 if (x//10, y//10) in checked:
                     continue
                 checked.add((x//10, y//10))
                 base_score = res_main[y, x]
-                roi_bgr = screen[y:y+h_m, x:x+w_m]
+                roi_bgr = screen_bgr[y:y+h_m, x:x+w_m]
                 roi_gray = screen_gray[y:y+h_m, x:x+w_m]
                 if roi_bgr.shape[:2] != main_tpl_bgr.shape[:2]:
                     continue
-                pad_anti = 10
-                roi_y1, roi_y2 = max(0, y-pad_anti), min(screen.shape[0], y+h_m+pad_anti)
-                roi_x1, roi_x2 = max(0, x-pad_anti), min(screen.shape[1], x+w_m+pad_anti)
-                anti_roi = screen[roi_y1:roi_y2, roi_x1:roi_x2]
-                if anti_roi.shape[0] >= h_a and anti_roi.shape[1] >= w_a:
-                    res_anti = cv2.matchTemplate(anti_roi, anti_tpl_bgr, cv2.TM_CCOEFF_NORMED)
-                    _, anti_score, _, _ = cv2.minMaxLoc(res_anti)
-                    if anti_score >= anti_threshold:
-                        if self.debug_mode:
-                            self.log(f"[Ultimate] rejected by anti image score={anti_score:.2f}")
-                        continue
+                if anti_path and anti_tpl_bgr is not None:
+                    h_a, w_a = anti_tpl_bgr.shape[:2]
+                    pad_anti = 10
+                    roi_y1 = max(0, y - pad_anti)
+                    roi_y2 = min(screen_bgr.shape[0], y + h_m + pad_anti)
+                    roi_x1 = max(0, x - pad_anti)
+                    roi_x2 = min(screen_bgr.shape[1], x + w_m + pad_anti)
+                    anti_roi = screen_bgr[roi_y1:roi_y2, roi_x1:roi_x2]
+                    if anti_roi.shape[0] >= h_a and anti_roi.shape[1] >= w_a:
+                        res_anti = cv2.matchTemplate(anti_roi, anti_tpl_bgr, cv2.TM_CCOEFF_NORMED)
+                        _, anti_score, _, _ = cv2.minMaxLoc(res_anti)
+                        if anti_score >= anti_threshold:
+                            self.log(f"[排他拦截]: 发现排除图 ({anti_score:.2f})，放弃该目标。")
+                            continue
+                # 顶部车名识别（可选）
                 top_h = int(h_m * 0.25)
-                tpl_top = main_tpl_gray[:top_h, :]
                 score_top = 0.0
                 if top_h > 10 and w_m > 10:
-                    tpl_top_core = tpl_top[5:-5, 5:-5]
+                    tpl_top = main_tpl_gray[:top_h, :]
+                    tpl_top_core = tpl_top[5:-5, 5:-5] if tpl_top.shape[0] > 10 and tpl_top.shape[1] > 10 else tpl_top
                     search_top = roi_gray[:int(h_m*0.35), :]
                     if search_top.shape[0] >= tpl_top_core.shape[0] and search_top.shape[1] >= tpl_top_core.shape[1]:
                         res_top = cv2.matchTemplate(search_top, tpl_top_core, cv2.TM_CCOEFF_NORMED)
                         _, score_top, _, _ = cv2.minMaxLoc(res_top)
+                # 右下角调校识别（可选）
                 bottom_h = int(h_m * 0.25)
                 right_w = int(w_m * 0.35)
-                tpl_pi_box = main_tpl_bgr[h_m-bottom_h:, w_m-right_w:]
                 score_bot = 0.0
                 if bottom_h > 10 and right_w > 10:
-                    tpl_pi_core = tpl_pi_box[5:-5, 5:-5]
+                    tpl_pi_box = main_tpl_bgr[h_m-bottom_h:, w_m-right_w:]
+                    tpl_pi_core = tpl_pi_box[5:-5, 5:-5] if tpl_pi_box.shape[0] > 10 and tpl_pi_box.shape[1] > 10 else tpl_pi_box
                     search_y1 = h_m - int(h_m*0.35)
                     search_x1 = w_m - int(w_m*0.45)
                     search_bot = roi_bgr[search_y1:, search_x1:]
@@ -1741,19 +1844,19 @@ class FH_UltimateBot(ctk.CTk):
             time.sleep(interval)
         return None
 
-    def wait_for_image_gray(self, template_path, region=None, threshold=0.75, timeout=30, interval=0.3, fast_mode=True):
+    def wait_for_image_gray(self, template_path, region=None, threshold=0.75, timeout=30, interval=0.3, fast_mode=True, invert_mode=False):
         start = time.time()
         while self.is_running and time.time() - start < timeout:
-            pos = self.find_image_gray(template_path, region, threshold, fast_mode)
+            pos = self.find_image_gray(template_path, region, threshold, fast_mode, invert_mode)
             if pos:
                 return pos
             time.sleep(interval)
         return None
 
-    def wait_for_any_image_gray(self, image_list, region=None, threshold=0.75, timeout=30, interval=0.3, fast_mode=True):
+    def wait_for_any_image_gray(self, image_list, region=None, threshold=0.75, timeout=30, interval=0.3, fast_mode=True, invert_mode=False):
         start = time.time()
         while self.is_running and time.time() - start < timeout:
-            pos = self.find_any_image_gray(image_list, region, threshold, fast_mode)
+            pos = self.find_any_image_gray(image_list, region, threshold, fast_mode, invert_mode)
             if pos:
                 return pos
             time.sleep(interval)
@@ -1779,21 +1882,21 @@ class FH_UltimateBot(ctk.CTk):
 
     def wait_for_image_with_element_multi(self, main_path, sub_path, region=None, fast_mode=True,
                                           main_threshold=0.60, like_threshold=0.75, final_threshold=0.72,
-                                          timeout=30, interval=0.4):
+                                          timeout=30, interval=0.4, mask_areas=None):
         start = time.time()
         while self.is_running and time.time() - start < timeout:
             pos = self.find_image_with_element_multi(main_path, sub_path, region, fast_mode,
-                                                     main_threshold, like_threshold, final_threshold)
+                                                     main_threshold, like_threshold, final_threshold, mask_areas)
             if pos:
                 return pos
             time.sleep(interval)
         return None
 
     def wait_for_image_ultimate_safe(self, main_path, anti_path, region=None, main_threshold=0.80,
-                                     anti_threshold=0.65, timeout=3, interval=0.2):
+                                     anti_threshold=0.65, timeout=3, interval=0.2, mask_areas=None):
         start = time.time()
         while self.is_running and time.time() - start < timeout:
-            pos = self.find_image_ultimate_safe(main_path, anti_path, region, main_threshold, anti_threshold)
+            pos = self.find_image_ultimate_safe(main_path, anti_path, region, main_threshold, anti_threshold, mask_areas)
             if pos:
                 return pos
             time.sleep(interval)
@@ -1927,7 +2030,7 @@ class FH_UltimateBot(ctk.CTk):
             self.template_cache.clear()
             self.scaled_template_cache.clear()
             self.load_template_file_cache()
-            
+
     # ==========================================
     # --- 模块：跑图 ---
     # ==========================================
@@ -2073,7 +2176,15 @@ class FH_UltimateBot(ctk.CTk):
                     timeout_triggered = True
                     break
                 if now - last_like_chk >= 3.0:
-                    pos_like = self.find_any_image_gray(["likeauthor.png", "dislikeauthor.png"], region=self.regions["中间"], threshold=0.70)
+                    vram_result = self.check_vramne_during_race()
+                    if vram_result is True:
+                        self.log("VRAM恢复完成，结束当前跑图流程，交给外层重新恢复。")
+                        return False
+                    elif vram_result is False:
+                        self.log("VRAM恢复失败。")
+                        return False
+                    pos_like = self.find_any_image_gray(["likeauthor.png", "dislikeauthor.png"],
+                                                        region=self.regions["中间"], threshold=0.70)
                     if pos_like:
                         self.log("识别到点赞作界面，执行回车确认！")
                         self.hw_press("enter")
@@ -2274,7 +2385,7 @@ class FH_UltimateBot(ctk.CTk):
                 if not self.is_running:
                     return False
                 pos_target = self.wait_for_image_with_element_multi("newCC.png", "newcartag.png", region=self.regions["全界面"],
-                                                                    main_threshold=0.75, like_threshold=0.75, final_threshold=0.70,
+                                                                    main_threshold=0.70, like_threshold=0.70, final_threshold=0.70,
                                                                     timeout=1.5, interval=0.2, fast_mode=True)
                 if pos_target:
                     self.game_click(pos_target)
@@ -2551,16 +2662,18 @@ class FH_UltimateBot(ctk.CTk):
         if not found:
             self.log("30次内未找到购买与出售")
             return False
+        # 筛选
         self.hw_press("y")
         time.sleep(1.0)
-        for _ in range(2):
-            self.hw_press("down", delay=0.06)
-            time.sleep(0.2)
-        time.sleep(0.5)
-        self.hw_press("enter")
-        time.sleep(1.0)
+        pos_repitem = self.wait_for_image_gray("repitem.png", region=self.regions["中间"], threshold=0.70, timeout=1, interval=0.3, fast_mode=True)
+        if not pos_repitem:
+            self.log("未识别到 repitem.png")
+            return False
+        self.game_click(pos_repitem)
+        time.sleep(0.8)
         self.hw_press("esc")
         time.sleep(1.0)
+
         self.log("切换到消耗品品牌...")
         self.hw_press("backspace")
         brand_pos = None
@@ -2578,7 +2691,7 @@ class FH_UltimateBot(ctk.CTk):
             return False
         self.game_click(brand_pos)
         time.sleep(0.8)
-        self.log("开始删除最近获得的车辆！！！请人工确认是否移除")
+        self.log("开始删除目标车辆！！！")
         not_found_pages = 0
         while self.sc_count < target_count:
             if not self.is_running:
@@ -2590,8 +2703,8 @@ class FH_UltimateBot(ctk.CTk):
                                                            timeout=3.0, interval=0.2)
             if not pos_target:
                 not_found_pages += 1
-                if not_found_pages >= 2:
-                    self.log("=连续翻找 2 页仍未搜索到目标车辆！视为车辆已全部清理完毕。")
+                if not_found_pages >= 5:
+                    self.log("=连续翻找 5 页仍未搜索到目标车辆！视为车辆已全部清理完毕。")
                     self.log("主动结束清理任务，准备进入下一步骤...")
                     break
                 self.log(f"当前页面未找到，向右翻页寻找... (第 {not_found_pages} 次翻页)")
